@@ -193,8 +193,13 @@ int main(int argc, const char **argv) {
 
 	struct passwd *pwd = getpwnam(options.user);
 	if (pwd == NULL) {
-		fprintf(stderr, "ERROR: getpwnam(%s) failed: %m\n", options.user);
-		return ERR_USER;
+		if (errno == 0) {
+			fprintf(stderr, "ERROR: no user found: %s\n", options.user);
+			return ERR_USER;
+		} else {
+			fprintf(stderr, "ERROR: getpwnam(%s) failed: %m\n", options.user);
+			return ERR_SYSTEM;
+		}
 	}
 
 	struct stat statbuf;
