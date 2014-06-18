@@ -53,9 +53,15 @@ enum flag_t {
 	DEBUG = 0x0100U
 };
 
+enum pam_type_t {
+	OPEN_SESSION,
+	CLOSE_SESSION
+};
+
 struct opts_t {
 	pam_handle_t *pamh;
 	enum flag_t flags;
+	enum pam_type_t type;
 	const char *user;
 	int modify;
 };
@@ -270,7 +276,26 @@ static void cleanup_count(pam_handle_t *pamh, void *data, int error_status) {
 	free((int *) data);
 }
 
+static void cleanup_type(pam_handle_t *pamh, void *data, int error_status) {
+	free((enum pam_type_t *) data);
+}
+
 static int get_count_cached(struct opts_t *options) {
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_type)");
+
+	const enum pam_type_t *type;
+	if (pam_get_data(options->pamh, PACKAGE "_type", (const void **) &type)
+	    == PAM_SUCCESS) {
+		if (options->flags & DEBUG)
+			pam_syslog(options->pamh, LOG_DEBUG, "found type %d, want %d",
+			           *type, options->type);
+		if (*type != options->type)
+			return -1;
+	} else {
+		return -1;
+	}
+
 	if (options->flags & DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_count)");
 
@@ -290,13 +315,28 @@ static int set_count_cached(struct opts_t *options, int count) {
 		return PAM_SYSTEM_ERR;
 	}
 	*newcount = count;
+	enum pam_type_t *newtype = malloc(sizeof(enum pam_type_t));
+	if (newtype == NULL) {
+		pam_syslog(options->pamh, LOG_CRIT, "malloc failed: %m");
+		return PAM_SYSTEM_ERR;
+	}
+	*newtype = options->type;
 
 	if (options->flags & DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_set_data(" PACKAGE "_count, %d)",
 		           count);
-
 	if ((err = pam_set_data(options->pamh, PACKAGE "_count", (void *) newcount,
 	                        cleanup_count)) != PAM_SUCCESS) {
+		pam_syslog(options->pamh, LOG_ERR, "Failed setting data: %s",
+		           pam_strerror(options->pamh, err));
+		return err;
+	}
+
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "pam_set_data(" PACKAGE "_type, %d)",
+		           options->type);
+	if ((err = pam_set_data(options->pamh, PACKAGE "_type", (void *) newtype,
+	                        cleanup_type)) != PAM_SUCCESS) {
 		pam_syslog(options->pamh, LOG_ERR, "Failed setting data: %s",
 		           pam_strerror(options->pamh, err));
 		return err;
@@ -314,6 +354,7 @@ pam_sm_open_session(pam_handle_t *pamh, int flags,
 	struct opts_t options;
 	options.pamh = pamh;
 	options.flags = flags;
+	options.type = OPEN_SESSION;
 	options.modify = 1;
 	int ret;
 	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
@@ -353,6 +394,7 @@ pam_sm_close_session(pam_handle_t *pamh, int flags,
 	struct opts_t options;
 	options.pamh = pamh;
 	options.flags = flags;
+	options.type = CLOSE_SESSION;
 	options.modify = -1;
 	int ret;
 	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
