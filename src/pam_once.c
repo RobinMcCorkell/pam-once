@@ -77,20 +77,28 @@ static int parse_argv(struct opts_t *options, int argc, const char **argv) {
 static char ** prepare_argv(struct opts_t *options) {
 	/* argv: exec user operation [--debug] NULL */
 	int size = (options->flags & DEBUG) ? 5 : 4;
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "argv size = %d", size);
 	char **argv = malloc(size * sizeof(char *));
 	if (argv == NULL) {
 		return NULL;
 	}
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "argv[0] = " COUNT_CMD);
 	if ((argv[0] = strdup(COUNT_CMD)) == NULL) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "argv[1] = %s", options->user);
 	if ((argv[1] = strdup(options->user)) == NULL) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "argv[2] = %d", options->modify);
 	if (asprintf(&argv[2], "%d", options->modify) < 0) {
 		free(argv);
 		errno = ENOMEM;
@@ -98,6 +106,7 @@ static char ** prepare_argv(struct opts_t *options) {
 	}
 
 	if (options->flags & DEBUG) {
+		pam_syslog(options->pamh, LOG_DEBUG, "argv[3] = --debug");
 		if ((argv[3] = strdup("--debug")) == NULL) {
 			free(argv);
 			errno = ENOMEM;
@@ -122,6 +131,8 @@ static int move_fd(int newfd, int fd) {
 static int modify_count(struct opts_t *options) {
 	int stdout_fds[2];
 	int stderr_fds[2];
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "Creating pipes");
 	if (pipe(stdout_fds) != 0) {
 		pam_syslog(options->pamh, LOG_ERR, "pipe(...) failed: %m");
 		return -1;
@@ -142,6 +153,8 @@ static int modify_count(struct opts_t *options) {
 		int maxfd = max(stdout_fds[0], stderr_fds[0]);
 		int number = 0;
 		while (1) {
+			if (options->flags & DEBUG)
+				pam_syslog(options->pamh, LOG_DEBUG, "Listening on pipes");
 			fd_set fds;
 			FD_ZERO(&fds);
 			FD_SET(stdout_fds[0], &fds);
@@ -156,17 +169,34 @@ static int modify_count(struct opts_t *options) {
 			} else if (ret > 0) {
 				if (FD_ISSET(stdout_fds[0], &fds)) {
 					int bytes = read(stdout_fds[0], buffer, sizeof(buffer) - 1);
+					if (options->flags & DEBUG)
+						pam_syslog(options->pamh, LOG_DEBUG,
+						           "Got %d bytes from stdout pipe: %s",
+						           bytes, buffer);
 					if (bytes == 0) {
+						if (options->flags & DEBUG)
+							pam_syslog(options->pamh, LOG_DEBUG,
+							           "EOF on stdout pipe");
 						break;
 					} else if (bytes < 0) {
 						pam_syslog(options->pamh, LOG_ERR, "read(stdout) failed: %m");
 						return -1;
 					}
 					number = strtol(buffer, NULL, 10);
+					if (options->flags & DEBUG)
+						pam_syslog(options->pamh, LOG_DEBUG, "New number: %d",
+						           number);
 				}
 				if (FD_ISSET(stderr_fds[0], &fds)) {
 					int bytes = read(stderr_fds[0], buffer, sizeof(buffer) - 1);
+					if (options->flags & DEBUG)
+						pam_syslog(options->pamh, LOG_DEBUG,
+						           "Got %d bytes from stderr pipe: %s",
+						           bytes, buffer);
 					if (bytes == 0) {
+						if (options->flags & DEBUG)
+							pam_syslog(options->pamh, LOG_DEBUG,
+							           "EOF on stderr pipe");
 						break;
 					} else if (bytes < 0) {
 						pam_syslog(options->pamh, LOG_ERR, "read(stderr) failed: %m");
@@ -241,6 +271,9 @@ static void cleanup_count(pam_handle_t *pamh, void *data, int error_status) {
 }
 
 static int get_count_cached(struct opts_t *options) {
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_count)");
+
 	const int *count;
 	if (pam_get_data(options->pamh, PACKAGE "_count", (const void **) &count)
 	    == PAM_SUCCESS)
@@ -257,6 +290,11 @@ static int set_count_cached(struct opts_t *options, int count) {
 		return PAM_SYSTEM_ERR;
 	}
 	*newcount = count;
+
+	if (options->flags & DEBUG)
+		pam_syslog(options->pamh, LOG_DEBUG, "pam_set_data(" PACKAGE "_count, %d)",
+		           count);
+
 	if ((err = pam_set_data(options->pamh, PACKAGE "_count", (void *) newcount,
 	                        cleanup_count)) != PAM_SUCCESS) {
 		pam_syslog(options->pamh, LOG_ERR, "Failed setting data: %s",
@@ -295,7 +333,13 @@ pam_sm_open_session(pam_handle_t *pamh, int flags,
 		ret = set_count_cached(&options, count);
 		if (ret != PAM_SUCCESS)
 			return ret;
+	} else {
+		if (options.flags & DEBUG)
+			pam_syslog(options.pamh, LOG_DEBUG, "Found cached count");
 	}
+
+	if (options.flags & DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
 
 	if (count == 1)
 		return PAM_SUCCESS;
@@ -328,7 +372,13 @@ pam_sm_close_session(pam_handle_t *pamh, int flags,
 		ret = set_count_cached(&options, count);
 		if (ret != PAM_SUCCESS)
 			return ret;
+	} else {
+		if (options.flags & DEBUG)
+			pam_syslog(options.pamh, LOG_DEBUG, "Found cached count");
 	}
+
+	if (options.flags & DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
 
 	if (count == 0)
 		return PAM_SUCCESS;
