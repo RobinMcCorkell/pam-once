@@ -41,9 +41,43 @@
 
 #define max(x,y) ((x) > (y) ? (x) : (y))
 
-static char ** prepare_argv(const char *user, int modify) {
-	/* argv: exec user operation NULL */
-	char **argv = malloc(4 * sizeof(char *));
+enum flag_t {
+/*	PAM_SILENT = 0x8000U,
+	PAM_DISALLOW_NULL_AUTHTOK = 0x0001U,
+	PAM_ESTABLISH_CRED = 0x0002U,
+	PAM_DELETE_CRED = 0x0004U,
+	PAM_REINITIALIZE_CRED = 0x0008U,
+	PAM_REFRESH_CRED = 0x0010U,
+	PAM_CHANGE_EXPIRED_AUTHTOK = 0x0020U,
+*/
+	DEBUG = 0x0100U
+};
+
+struct opts_t {
+	pam_handle_t *pamh;
+	enum flag_t flags;
+	const char *user;
+	int modify;
+};
+
+static int parse_argv(struct opts_t *options, int argc, const char **argv) {
+	for (int i = 0; i < argc; ++i) {
+		if (strcasecmp(argv[i], "debug") == 0) {
+			options->flags |= DEBUG;
+		} else if (strcasecmp(argv[i], "quiet") == 0) {
+			options->flags |= PAM_SILENT;
+		} else {
+			pam_syslog(options->pamh, LOG_ERR, "Unknown option %s", argv[i]);
+			return PAM_SERVICE_ERR;
+		}
+	}
+	return PAM_SUCCESS;
+}
+
+static char ** prepare_argv(struct opts_t *options) {
+	/* argv: exec user operation [--debug] NULL */
+	int size = (options->flags & DEBUG) ? 5 : 4;
+	char **argv = malloc(size * sizeof(char *));
 	if (argv == NULL) {
 		return NULL;
 	}
@@ -52,28 +86,28 @@ static char ** prepare_argv(const char *user, int modify) {
 		errno = ENOMEM;
 		return NULL;
 	}
-	if ((argv[1] = strdup(user)) == NULL) {
-		free(argv[0]);
+	if ((argv[1] = strdup(options->user)) == NULL) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
-	if (asprintf(&argv[2], "%d", modify) < 0) {
-		free(argv[0]);
-		free(argv[1]);
+	if (asprintf(&argv[2], "%d", options->modify) < 0) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
-	argv[3] = NULL;
-	return argv;
-}
 
-static void free_argv(char **argv) {
-	free(argv[0]);
-	free(argv[1]);
-	free(argv[2]);
-	free(argv);
+	if (options->flags & DEBUG) {
+		if ((argv[3] = strdup("--debug")) == NULL) {
+			free(argv);
+			errno = ENOMEM;
+			return NULL;
+		}
+		argv[4] = NULL;
+	} else {
+		argv[3] = NULL;
+	}
+	return argv;
 }
 
 static int move_fd(int newfd, int fd) {
@@ -85,21 +119,21 @@ static int move_fd(int newfd, int fd) {
 	return 0;
 }
 
-static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
+static int modify_count(struct opts_t *options) {
 	int stdout_fds[2];
 	int stderr_fds[2];
 	if (pipe(stdout_fds) != 0) {
-		pam_syslog(pamh, LOG_ERR, "pipe(...) failed: %m");
+		pam_syslog(options->pamh, LOG_ERR, "pipe(...) failed: %m");
 		return -1;
 	}
 	if (pipe(stderr_fds) != 0) {
-		pam_syslog(pamh, LOG_ERR, "pipe(...) failed: %m");
+		pam_syslog(options->pamh, LOG_ERR, "pipe(...) failed: %m");
 		return -1;
 	}
 
 	pid_t pid = fork();
 	if (pid == -1) {
-		pam_syslog(pamh, LOG_CRIT, "fork failed: %m");
+		pam_syslog(options->pamh, LOG_CRIT, "fork failed: %m");
 		return -1;
 	}
 	if (pid > 0) { /* parent */
@@ -117,7 +151,7 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 			int ret = select(maxfd + 1, &fds, NULL, NULL, NULL);
 
 			if (ret < 0) {
-				pam_syslog(pamh, LOG_CRIT, "select() failed: %m");
+				pam_syslog(options->pamh, LOG_CRIT, "select() failed: %m");
 				return -1;
 			} else if (ret > 0) {
 				if (FD_ISSET(stdout_fds[0], &fds)) {
@@ -125,7 +159,7 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 					if (bytes == 0) {
 						break;
 					} else if (bytes < 0) {
-						pam_syslog(pamh, LOG_ERR, "read(stdout) failed: %m");
+						pam_syslog(options->pamh, LOG_ERR, "read(stdout) failed: %m");
 						return -1;
 					}
 					number = strtol(buffer, NULL, 10);
@@ -135,10 +169,10 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 					if (bytes == 0) {
 						break;
 					} else if (bytes < 0) {
-						pam_syslog(pamh, LOG_ERR, "read(stderr) failed: %m");
+						pam_syslog(options->pamh, LOG_ERR, "read(stderr) failed: %m");
 						return -1;
 					}
-					pam_syslog(pamh, LOG_ERR, "stderr: %s", buffer);
+					pam_syslog(options->pamh, LOG_ERR, "stderr: %s", buffer);
 				}
 			}
 		}
@@ -149,24 +183,24 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 		int status;
 		while ((retval = waitpid(pid, &status, 0)) == -1 && errno == EINTR);
 		if (retval == (pid_t) -1) {
-			pam_syslog(pamh, LOG_ERR, "waitpid returns with -1: %m");
+			pam_syslog(options->pamh, LOG_ERR, "waitpid returns with -1: %m");
 			return -1;
 		} else if (status != 0) {
 			if (WIFEXITED(status)) {
 				if (WEXITSTATUS(status) == ERR_IGNORE) {
-					pam_syslog(pamh, LOG_NOTICE, "%s exited with ignore",
+					pam_syslog(options->pamh, LOG_NOTICE, "%s exited with ignore",
 					           COUNT_CMD);
 					return 0;
 				} else {
-					pam_syslog(pamh, LOG_ERR, "%s failed: exit code %d",
+					pam_syslog(options->pamh, LOG_ERR, "%s failed: exit code %d",
 					           COUNT_CMD, WEXITSTATUS(status));
 				}
 			} else if (WIFSIGNALED(status)) {
-				pam_syslog(pamh, LOG_ERR, "%s failed: caught signal %d%s",
+				pam_syslog(options->pamh, LOG_ERR, "%s failed: caught signal %d%s",
 				           COUNT_CMD, WTERMSIG(status),
 				           WCOREDUMP(status) ? " (core dumped)" : "");
 			} else {
-				pam_syslog(pamh, LOG_ERR, "%s failed: unknown status 0x%x",
+				pam_syslog(options->pamh, LOG_ERR, "%s failed: unknown status 0x%x",
 				           COUNT_CMD, status);
 			}
 			return -1;
@@ -180,24 +214,23 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 
 		close(STDIN_FILENO);
 
-		char **argv = prepare_argv(user, modify);
+		char **argv = prepare_argv(options);
 		if (argv == NULL) {
 			int err = errno;
-			pam_syslog(pamh, LOG_CRIT, "Failed preparing argv: %m");
+			pam_syslog(options->pamh, LOG_CRIT, "Failed preparing argv: %m");
 			_exit(err);
 		}
-		char **envlist = pam_getenvlist(pamh);
+		char **envlist = pam_getenvlist(options->pamh);
 		if (envlist == NULL) {
 			int err = errno;
-			pam_syslog(pamh, LOG_CRIT, "Failed preparing envlist: %m");
-			free_argv(argv);
+			pam_syslog(options->pamh, LOG_CRIT, "Failed preparing envlist: %m");
 			_exit(err);
 		}
 
 		execve(argv[0], argv, envlist);
 		int err = errno;
-		pam_syslog(pamh, LOG_CRIT, "execve(%s) failed: %m", argv[0]);
-		free_argv(argv);
+		pam_syslog(options->pamh, LOG_CRIT, "execve(%s) failed: %m", argv[0]);
+		free(argv);
 		free(envlist);
 		_exit(err);
 	}
@@ -207,27 +240,27 @@ static void cleanup_count(pam_handle_t *pamh, void *data, int error_status) {
 	free((int *) data);
 }
 
-static int get_count_cached(pam_handle_t *pamh, const char *user) {
+static int get_count_cached(struct opts_t *options) {
 	const int *count;
-	if (pam_get_data(pamh, PACKAGE "_count", (const void **) &count)
+	if (pam_get_data(options->pamh, PACKAGE "_count", (const void **) &count)
 	    == PAM_SUCCESS)
 		return *count;
 	else
 		return -1;
 }
 
-static int set_count_cached(pam_handle_t *pamh, const char *user, int count) {
+static int set_count_cached(struct opts_t *options, int count) {
 	int err;
 	int *newcount = malloc(sizeof(int));
 	if (newcount == NULL) {
-		pam_syslog(pamh, LOG_CRIT, "malloc failed: %m");
+		pam_syslog(options->pamh, LOG_CRIT, "malloc failed: %m");
 		return PAM_SYSTEM_ERR;
 	}
 	*newcount = count;
-	if ((err = pam_set_data(pamh, PACKAGE "_count", (void *) newcount,
+	if ((err = pam_set_data(options->pamh, PACKAGE "_count", (void *) newcount,
 	                        cleanup_count)) != PAM_SUCCESS) {
-		pam_syslog(pamh, LOG_ERR, "Failed setting data: %s",
-		           pam_strerror(pamh, err));
+		pam_syslog(options->pamh, LOG_ERR, "Failed setting data: %s",
+		           pam_strerror(options->pamh, err));
 		return err;
 	}
 	return PAM_SUCCESS;
@@ -240,22 +273,28 @@ static int set_count_cached(pam_handle_t *pamh, const char *user, int count) {
 PAM_EXTERN int
 pam_sm_open_session(pam_handle_t *pamh, int flags,
                     int argc, const char **argv) {
-	const char *user;
-	int err = pam_get_user(pamh, &user, NULL);
-	if (err != PAM_SUCCESS) {
+	struct opts_t options;
+	options.pamh = pamh;
+	options.flags = flags;
+	options.modify = 1;
+	int ret;
+	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
+		return ret;
+
+	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
-		           pam_strerror(pamh, err));
-		return err;
+		           pam_strerror(options.pamh, ret));
+		return ret;
 	}
 
-	int count = get_count_cached(pamh, user);
+	int count = get_count_cached(&options);
 	if (count == -1) {
-		count = modify_count(pamh, user, 1);
+		count = modify_count(&options);
 		if (count == -1)
 			return PAM_SYSTEM_ERR;
-		err = set_count_cached(pamh, user, count);
-		if (err != PAM_SUCCESS)
-			return err;
+		ret = set_count_cached(&options, count);
+		if (ret != PAM_SUCCESS)
+			return ret;
 	}
 
 	if (count == 1)
@@ -267,22 +306,28 @@ pam_sm_open_session(pam_handle_t *pamh, int flags,
 PAM_EXTERN int
 pam_sm_close_session(pam_handle_t *pamh, int flags,
                      int argc, const char **argv) {
-	const char *user;
-	int err = pam_get_user(pamh, &user, NULL);
-	if (err != PAM_SUCCESS) {
+	struct opts_t options;
+	options.pamh = pamh;
+	options.flags = flags;
+	options.modify = -1;
+	int ret;
+	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
+		return ret;
+
+	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
-		           pam_strerror(pamh, err));
-		return err;
+		           pam_strerror(options.pamh, ret));
+		return ret;
 	}
 
-	int count = get_count_cached(pamh, user);
+	int count = get_count_cached(&options);
 	if (count == -1) {
-		count = modify_count(pamh, user, -1);
+		count = modify_count(&options);
 		if (count == -1)
 			return PAM_SYSTEM_ERR;
-		err = set_count_cached(pamh, user, count);
-		if (err != PAM_SUCCESS)
-			return err;
+		ret = set_count_cached(&options, count);
+		if (ret != PAM_SUCCESS)
+			return ret;
 	}
 
 	if (count == 0)
