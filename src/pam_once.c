@@ -29,6 +29,7 @@
 #include <grp.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <sys/select.h>
 #include "common.h"
 
 #define PAM_SM_SESSION
@@ -37,6 +38,8 @@
 #include <security/pam_modutil.h>
 #include <security/pam_ext.h>
 #include <security/pam_appl.h>
+
+#define max(x,y) ((x) > (y) ? (x) : (y))
 
 static char ** prepare_argv(const char *user, int modify) {
 	/* argv: exec user operation NULL */
@@ -83,8 +86,13 @@ static int move_fd(int newfd, int fd) {
 }
 
 static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
-	int fds[2];
-	if (pipe(fds) != 0) {
+	int stdout_fds[2];
+	int stderr_fds[2];
+	if (pipe(stdout_fds) != 0) {
+		pam_syslog(pamh, LOG_ERR, "pipe(...) failed: %m");
+		return -1;
+	}
+	if (pipe(stderr_fds) != 0) {
 		pam_syslog(pamh, LOG_ERR, "pipe(...) failed: %m");
 		return -1;
 	}
@@ -95,11 +103,47 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 		return -1;
 	}
 	if (pid > 0) { /* parent */
-		close(fds[1]);
-		char buffer[16];
-		int bytes = read(fds[0], buffer, sizeof(buffer));
-		int number = strtol(buffer, NULL, 10);
-		close(fds[0]);
+		close(stdout_fds[1]);
+		close(stderr_fds[1]);
+		int maxfd = max(stdout_fds[0], stderr_fds[0]);
+		int number = 0;
+		while (1) {
+			fd_set fds;
+			FD_ZERO(&fds);
+			FD_SET(stdout_fds[0], &fds);
+			FD_SET(stderr_fds[0], &fds);
+
+			char buffer[1024] = {0};
+			int ret = select(maxfd + 1, &fds, NULL, NULL, NULL);
+
+			if (ret < 0) {
+				pam_syslog(pamh, LOG_CRIT, "select() failed: %m");
+				return -1;
+			} else if (ret > 0) {
+				if (FD_ISSET(stdout_fds[0], &fds)) {
+					int bytes = read(stdout_fds[0], buffer, sizeof(buffer) - 1);
+					if (bytes == 0) {
+						break;
+					} else if (bytes < 0) {
+						pam_syslog(pamh, LOG_ERR, "read(stdout) failed: %m");
+						return -1;
+					}
+					number = strtol(buffer, NULL, 10);
+				}
+				if (FD_ISSET(stderr_fds[0], &fds)) {
+					int bytes = read(stderr_fds[0], buffer, sizeof(buffer) - 1);
+					if (bytes == 0) {
+						break;
+					} else if (bytes < 0) {
+						pam_syslog(pamh, LOG_ERR, "read(stderr) failed: %m");
+						return -1;
+					}
+					pam_syslog(pamh, LOG_ERR, "stderr: %s", buffer);
+				}
+			}
+		}
+		close(stdout_fds[0]);
+		close(stderr_fds[0]);
 
 		pid_t retval;
 		int status;
@@ -129,20 +173,10 @@ static int modify_count(pam_handle_t *pamh, const char *user, int modify) {
 		}
 		return number;
 	} else { /* child */
-		close(fds[0]);
-		move_fd(fds[1], STDOUT_FILENO);
-
-		int fd = open("/dev/null", O_WRONLY);
-		if (fd == -1) {
-			int err = errno;
-			pam_syslog(pamh, LOG_CRIT, "open of %s failed: %m", "/dev/null");
-			_exit(err);
-		}
-		if (move_fd(fd, STDERR_FILENO) == -1) {
-			int err = errno;
-			pam_syslog(pamh, LOG_CRIT, "move to stderr failed: %m");
-			_exit(err);
-		}
+		close(stdout_fds[0]);
+		close(stderr_fds[0]);
+		move_fd(stdout_fds[1], STDOUT_FILENO);
+		move_fd(stderr_fds[1], STDERR_FILENO);
 
 		close(STDIN_FILENO);
 
