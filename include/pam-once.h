@@ -16,17 +16,14 @@
 	along with pam-once.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "config.h"
+#ifndef PAM_ONCE_H
+#define PAM_ONCE_H
 
-#define COUNT_CMD PKGLIBEXECDIR "/po_count"
-#define COUNT_PATH RUNDIR "/" PACKAGE
+#include <security/_pam_types.h>
 
-/* po_count return codes */
-#define ERR_SUCCESS 0
-#define ERR_GENERIC 1
-#define ERR_ARGS    2
-#define ERR_USER    3
-#define ERR_FILE    4
-#define ERR_SYSTEM  5
-#define ERR_IGNORE  6
+#define PAM_ONCE_DEBUG 0x0100U
 
+int pam_once_open_session(pam_handle_t *pamh, int flags);
+int pam_once_close_session(pam_handle_t *pamh, int flags);
+
+#endif

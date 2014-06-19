@@ -1,11 +1,9 @@
-AC_INIT([pam_once], [0.1], [rmccorkell@karoshi.org.uk])
+AC_INIT([pam-once], [0.1], [rmccorkell@karoshi.org.uk])
 AC_PREREQ([2.61])
 
-AC_CONFIG_SRCDIR([src/pam_once.c])
+AC_CONFIG_SRCDIR([src/pam-once.c])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_FILES([Makefile])
-AC_DISABLE_STATIC
-AC_PREFIX_DEFAULT()
 
 AC_PROG_CC
 AC_PROG_INSTALL

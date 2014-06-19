@@ -1,19 +1,19 @@
 /*
 	Copyright (C) 2014 Robin McCorkell <rmccorkell@karoshi.org.uk>
-	This file is part of pam_once.
+	This file is part of pam-once.
 
-	pam_once is free software: you can redistribute it and/or modify
+	pam-once is free software: you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
 	the Free Software Foundation, either version 3 of the License, or
 	(at your option) any later version.
 
-	pam_once is distributed in the hope that it will be useful,
+	pam-once is distributed in the hope that it will be useful,
 	but WITHOUT ANY WARRANTY; without even the implied warranty of
 	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 	GNU General Public License for more details.
 
 	You should have received a copy of the GNU General Public License
-	along with pam_once.  If not, see <http://www.gnu.org/licenses/>.
+	along with pam-once.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <errno.h>
@@ -30,28 +30,16 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <sys/select.h>
-#include "common.h"
-
-#define PAM_SM_SESSION
 
 #include <security/pam_modules.h>
 #include <security/pam_modutil.h>
 #include <security/pam_ext.h>
 #include <security/pam_appl.h>
 
-#define max(x,y) ((x) > (y) ? (x) : (y))
+#include <pam-once.h>
+#include "common.h"
 
-enum flag_t {
-/*	PAM_SILENT = 0x8000U,
-	PAM_DISALLOW_NULL_AUTHTOK = 0x0001U,
-	PAM_ESTABLISH_CRED = 0x0002U,
-	PAM_DELETE_CRED = 0x0004U,
-	PAM_REINITIALIZE_CRED = 0x0008U,
-	PAM_REFRESH_CRED = 0x0010U,
-	PAM_CHANGE_EXPIRED_AUTHTOK = 0x0020U,
-*/
-	DEBUG = 0x0100U
-};
+#define max(x,y) ((x) > (y) ? (x) : (y))
 
 enum pam_type_t {
 	OPEN_SESSION,
@@ -60,50 +48,36 @@ enum pam_type_t {
 
 struct opts_t {
 	pam_handle_t *pamh;
-	enum flag_t flags;
+	int flags;
 	enum pam_type_t type;
 	const char *user;
 	int modify;
 };
 
-static int parse_argv(struct opts_t *options, int argc, const char **argv) {
-	for (int i = 0; i < argc; ++i) {
-		if (strcasecmp(argv[i], "debug") == 0) {
-			options->flags |= DEBUG;
-		} else if (strcasecmp(argv[i], "quiet") == 0) {
-			options->flags |= PAM_SILENT;
-		} else {
-			pam_syslog(options->pamh, LOG_ERR, "Unknown option %s", argv[i]);
-			return PAM_SERVICE_ERR;
-		}
-	}
-	return PAM_SUCCESS;
-}
-
 static char ** prepare_argv(struct opts_t *options) {
 	/* argv: exec user operation [--debug] NULL */
-	int size = (options->flags & DEBUG) ? 5 : 4;
-	if (options->flags & DEBUG)
+	int size = (options->flags & PAM_ONCE_DEBUG) ? 5 : 4;
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "argv size = %d", size);
 	char **argv = malloc(size * sizeof(char *));
 	if (argv == NULL) {
 		return NULL;
 	}
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "argv[0] = " COUNT_CMD);
 	if ((argv[0] = strdup(COUNT_CMD)) == NULL) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "argv[1] = %s", options->user);
 	if ((argv[1] = strdup(options->user)) == NULL) {
 		free(argv);
 		errno = ENOMEM;
 		return NULL;
 	}
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "argv[2] = %d", options->modify);
 	if (asprintf(&argv[2], "%d", options->modify) < 0) {
 		free(argv);
@@ -111,7 +85,7 @@ static char ** prepare_argv(struct opts_t *options) {
 		return NULL;
 	}
 
-	if (options->flags & DEBUG) {
+	if (options->flags & PAM_ONCE_DEBUG) {
 		pam_syslog(options->pamh, LOG_DEBUG, "argv[3] = --debug");
 		if ((argv[3] = strdup("--debug")) == NULL) {
 			free(argv);
@@ -137,7 +111,7 @@ static int move_fd(int newfd, int fd) {
 static int modify_count(struct opts_t *options) {
 	int stdout_fds[2];
 	int stderr_fds[2];
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "Creating pipes");
 	if (pipe(stdout_fds) != 0) {
 		pam_syslog(options->pamh, LOG_ERR, "pipe(...) failed: %m");
@@ -159,7 +133,7 @@ static int modify_count(struct opts_t *options) {
 		int maxfd = max(stdout_fds[0], stderr_fds[0]);
 		int number = 0;
 		while (1) {
-			if (options->flags & DEBUG)
+			if (options->flags & PAM_ONCE_DEBUG)
 				pam_syslog(options->pamh, LOG_DEBUG, "Listening on pipes");
 			fd_set fds;
 			FD_ZERO(&fds);
@@ -175,12 +149,12 @@ static int modify_count(struct opts_t *options) {
 			} else if (ret > 0) {
 				if (FD_ISSET(stdout_fds[0], &fds)) {
 					int bytes = read(stdout_fds[0], buffer, sizeof(buffer) - 1);
-					if (options->flags & DEBUG)
+					if (options->flags & PAM_ONCE_DEBUG)
 						pam_syslog(options->pamh, LOG_DEBUG,
 						           "Got %d bytes from stdout pipe: %s",
 						           bytes, buffer);
 					if (bytes == 0) {
-						if (options->flags & DEBUG)
+						if (options->flags & PAM_ONCE_DEBUG)
 							pam_syslog(options->pamh, LOG_DEBUG,
 							           "EOF on stdout pipe");
 						break;
@@ -189,18 +163,18 @@ static int modify_count(struct opts_t *options) {
 						return -1;
 					}
 					number = strtol(buffer, NULL, 10);
-					if (options->flags & DEBUG)
+					if (options->flags & PAM_ONCE_DEBUG)
 						pam_syslog(options->pamh, LOG_DEBUG, "New number: %d",
 						           number);
 				}
 				if (FD_ISSET(stderr_fds[0], &fds)) {
 					int bytes = read(stderr_fds[0], buffer, sizeof(buffer) - 1);
-					if (options->flags & DEBUG)
+					if (options->flags & PAM_ONCE_DEBUG)
 						pam_syslog(options->pamh, LOG_DEBUG,
 						           "Got %d bytes from stderr pipe: %s",
 						           bytes, buffer);
 					if (bytes == 0) {
-						if (options->flags & DEBUG)
+						if (options->flags & PAM_ONCE_DEBUG)
 							pam_syslog(options->pamh, LOG_DEBUG,
 							           "EOF on stderr pipe");
 						break;
@@ -281,13 +255,13 @@ static void cleanup_type(pam_handle_t *pamh, void *data, int error_status) {
 }
 
 static int get_count_cached(struct opts_t *options) {
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_type)");
 
 	const enum pam_type_t *type;
 	if (pam_get_data(options->pamh, PACKAGE "_type", (const void **) &type)
 	    == PAM_SUCCESS) {
-		if (options->flags & DEBUG)
+		if (options->flags & PAM_ONCE_DEBUG)
 			pam_syslog(options->pamh, LOG_DEBUG, "found type %d, want %d",
 			           *type, options->type);
 		if (*type != options->type)
@@ -296,7 +270,7 @@ static int get_count_cached(struct opts_t *options) {
 		return -1;
 	}
 
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_count)");
 
 	const int *count;
@@ -322,7 +296,7 @@ static int set_count_cached(struct opts_t *options, int count) {
 	}
 	*newtype = options->type;
 
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_set_data(" PACKAGE "_count, %d)",
 		           count);
 	if ((err = pam_set_data(options->pamh, PACKAGE "_count", (void *) newcount,
@@ -332,7 +306,7 @@ static int set_count_cached(struct opts_t *options, int count) {
 		return err;
 	}
 
-	if (options->flags & DEBUG)
+	if (options->flags & PAM_ONCE_DEBUG)
 		pam_syslog(options->pamh, LOG_DEBUG, "pam_set_data(" PACKAGE "_type, %d)",
 		           options->type);
 	if ((err = pam_set_data(options->pamh, PACKAGE "_type", (void *) newtype,
@@ -345,21 +319,17 @@ static int set_count_cached(struct opts_t *options, int count) {
 }
 
 /******************
- *	PAM functions
+ * extern functions
  ******************/
 
-PAM_EXTERN int
-pam_sm_open_session(pam_handle_t *pamh, int flags,
-                    int argc, const char **argv) {
+int pam_once_open_session(pam_handle_t *pamh, int flags) {
 	struct opts_t options;
 	options.pamh = pamh;
 	options.flags = flags;
 	options.type = OPEN_SESSION;
 	options.modify = 1;
-	int ret;
-	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
-		return ret;
 
+	int ret;
 	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
 		           pam_strerror(options.pamh, ret));
@@ -375,11 +345,11 @@ pam_sm_open_session(pam_handle_t *pamh, int flags,
 		if (ret != PAM_SUCCESS)
 			return ret;
 	} else {
-		if (options.flags & DEBUG)
+		if (options.flags & PAM_ONCE_DEBUG)
 			pam_syslog(options.pamh, LOG_DEBUG, "Found cached count");
 	}
 
-	if (options.flags & DEBUG)
+	if (options.flags & PAM_ONCE_DEBUG)
 		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
 
 	if (count == 1)
@@ -388,18 +358,14 @@ pam_sm_open_session(pam_handle_t *pamh, int flags,
 	return PAM_IGNORE;
 }
 
-PAM_EXTERN int
-pam_sm_close_session(pam_handle_t *pamh, int flags,
-                     int argc, const char **argv) {
+int pam_once_close_session(pam_handle_t *pamh, int flags) {
 	struct opts_t options;
 	options.pamh = pamh;
 	options.flags = flags;
 	options.type = CLOSE_SESSION;
 	options.modify = -1;
-	int ret;
-	if ((ret = parse_argv(&options, argc, argv)) != PAM_SUCCESS)
-		return ret;
 
+	int ret;
 	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
 		           pam_strerror(options.pamh, ret));
@@ -415,11 +381,11 @@ pam_sm_close_session(pam_handle_t *pamh, int flags,
 		if (ret != PAM_SUCCESS)
 			return ret;
 	} else {
-		if (options.flags & DEBUG)
+		if (options.flags & PAM_ONCE_DEBUG)
 			pam_syslog(options.pamh, LOG_DEBUG, "Found cached count");
 	}
 
-	if (options.flags & DEBUG)
+	if (options.flags & PAM_ONCE_DEBUG)
 		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
 
 	if (count == 0)

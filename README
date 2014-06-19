@@ -1,31 +1,42 @@
-pam_once
+pam-once
 Version 0.1
 
  Copyright (C) 2013 Robin McCorkell
- This file is part of pam_once.
+ This file is part of pam-once.
 
- pam_once is free software: you can redistribute it and/or modify
+ pam-once is free software: you can redistribute it and/or modify
  it under the terms of the GNU Lesser General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
 
- pam_once is distributed in the hope that it will be useful,
+ pam-once is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU Lesser General Public License for more details.
 
  You should have received a copy of the GNU Lesser General Public License
- along with pam_once.  If not, see <http://www.gnu.org/licenses/>.
+ along with pam-once.  If not, see <http://www.gnu.org/licenses/>.
 
-A PAM module for the session stack to limit execution of further modules to
-the first open_session for a user, or the last close_session for a user.
+A library for PAM modules to aid in limiting execution to the first
+open_session and the last close_session of a user, aka on their first login
+and last logout.
 
-Returns PAM_SUCCESS for the first open_session for a user, or for the last
-close_session for a user. Otherwise returns PAM_IGNORE.
+Example:
+	#include <pam-once.h>
 
-Example usage to only display motd on first login:
- session	[success=ok ignore=1]	pam_once.so
- session	optional				pam_motd.so motd=/etc/motd
+	pam_sm_open_session(pam_handle_t *pamh, ...) {
+		int ret;
+		ret = pam_once_open_session(pamh, NULL);
+		if (ret == PAM_SUCCESS) {
+			/* run module */
+			return PAM_SUCCESS;
+		} else if (ret == PAM_IGNORE) {
+			/* don't run module */
+			return PAM_IGNORE;
+		}
+		/* error */
+		return ret;
+	}
 
 Contact:
  Robin McCorkell <rmccorkell@karoshi.org.uk>
