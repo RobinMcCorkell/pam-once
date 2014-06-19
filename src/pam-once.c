@@ -108,6 +108,73 @@ static int move_fd(int newfd, int fd) {
 	return 0;
 }
 
+static int syslog_output(struct opts_t *options, int stdout, int stderr) {
+	int maxfd = max(stdout, stderr);
+	int number = 0;
+	char buffer[1024];
+	while (1) {
+		if (options->flags & PAM_ONCE_DEBUG)
+			pam_syslog(options->pamh, LOG_DEBUG, "Listening on pipes");
+		fd_set fds;
+		FD_ZERO(&fds);
+		FD_SET(stdout, &fds);
+		FD_SET(stderr, &fds);
+
+		int ret = select(maxfd + 1, &fds, NULL, NULL, NULL);
+
+		if (ret < 0) {
+			pam_syslog(options->pamh, LOG_CRIT, "select() failed: %m");
+			return -1;
+		} else if (ret > 0) {
+			if (FD_ISSET(stdout, &fds)) {
+				int bytes = read(stdout, buffer, sizeof(buffer) - 1);
+				buffer[bytes] = '\0';
+				if (options->flags & PAM_ONCE_DEBUG)
+					pam_syslog(options->pamh, LOG_DEBUG,
+					           "Got %d bytes from stdout pipe: %s",
+					           bytes, buffer);
+				if (bytes == 0) {
+					break;
+				} else if (bytes < 0) {
+					pam_syslog(options->pamh, LOG_ERR, "read(stdout) failed: %m");
+					return -1;
+				}
+				number = strtol(buffer, NULL, 10);
+				if (options->flags & PAM_ONCE_DEBUG)
+					pam_syslog(options->pamh, LOG_DEBUG, "New number: %d",
+					           number);
+			}
+			if (FD_ISSET(stderr, &fds)) {
+				int bytes = read(stderr, buffer, sizeof(buffer) - 1);
+				buffer[bytes] = '\0';
+				if (options->flags & PAM_ONCE_DEBUG)
+					pam_syslog(options->pamh, LOG_DEBUG,
+					           "Got %d bytes from stderr pipe: %s",
+					           bytes, buffer);
+				if (bytes == 0) {
+					break;
+				} else if (bytes < 0) {
+					pam_syslog(options->pamh, LOG_ERR, "read(stderr) failed: %m");
+					return -1;
+				}
+
+				char *start = buffer;
+				char *end;
+				do {
+					end = strchr(start, '\n');
+					if (end != NULL)
+						*end = '\0';
+					if (strlen(start) > 0)
+						pam_syslog(options->pamh, LOG_ERR, "stderr: %s", start);
+					if (end != NULL)
+						start = end + 1;
+				} while (end != NULL);
+			}
+		}
+	}
+	return number;
+}
+
 static int modify_count(struct opts_t *options) {
 	int stdout_fds[2];
 	int stderr_fds[2];
@@ -128,58 +195,13 @@ static int modify_count(struct opts_t *options) {
 	if (pid > 0) { /* parent */
 		close(stdout_fds[1]);
 		close(stderr_fds[1]);
-		int maxfd = max(stdout_fds[0], stderr_fds[0]);
-		int number = 0;
-		char buffer[1024];
-		while (1) {
-			if (options->flags & PAM_ONCE_DEBUG)
-				pam_syslog(options->pamh, LOG_DEBUG, "Listening on pipes");
-			fd_set fds;
-			FD_ZERO(&fds);
-			FD_SET(stdout_fds[0], &fds);
-			FD_SET(stderr_fds[0], &fds);
 
-			int ret = select(maxfd + 1, &fds, NULL, NULL, NULL);
-
-			if (ret < 0) {
-				pam_syslog(options->pamh, LOG_CRIT, "select() failed: %m");
-				return -1;
-			} else if (ret > 0) {
-				if (FD_ISSET(stdout_fds[0], &fds)) {
-					int bytes = read(stdout_fds[0], buffer, sizeof(buffer) - 1);
-					buffer[bytes] = '\0';
-					if (options->flags & PAM_ONCE_DEBUG)
-						pam_syslog(options->pamh, LOG_DEBUG,
-						           "Got %d bytes from stdout pipe: %s",
-						           bytes, buffer);
-					if (bytes == 0) {
-						break;
-					} else if (bytes < 0) {
-						pam_syslog(options->pamh, LOG_ERR, "read(stdout) failed: %m");
-						return -1;
-					}
-					number = strtol(buffer, NULL, 10);
-					if (options->flags & PAM_ONCE_DEBUG)
-						pam_syslog(options->pamh, LOG_DEBUG, "New number: %d",
-						           number);
-				}
-				if (FD_ISSET(stderr_fds[0], &fds)) {
-					int bytes = read(stderr_fds[0], buffer, sizeof(buffer) - 1);
-					buffer[bytes] = '\0';
-					if (options->flags & PAM_ONCE_DEBUG)
-						pam_syslog(options->pamh, LOG_DEBUG,
-						           "Got %d bytes from stderr pipe: %s",
-						           bytes, buffer);
-					if (bytes == 0) {
-						break;
-					} else if (bytes < 0) {
-						pam_syslog(options->pamh, LOG_ERR, "read(stderr) failed: %m");
-						return -1;
-					}
-					pam_syslog(options->pamh, LOG_ERR, "stderr: %s", buffer);
-				}
-			}
+		int number;
+		if ((number = syslog_output(options, stdout_fds[0], stderr_fds[0]))
+		     < 0) {
+			return -1;
 		}
+
 		close(stdout_fds[0]);
 		close(stderr_fds[0]);
 
