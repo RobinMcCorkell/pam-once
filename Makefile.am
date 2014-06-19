@@ -15,3 +15,6 @@ include_HEADERS = include/pam-once.h
 pkglibexec_PROGRAMS = po_count
 
 po_count_SOURCES = src/po_count.c
+
+pkgconfigdir = $(libdir)/pkgconfig
+pkgconfig_DATA = pam-once.pc
