@@ -111,8 +111,6 @@ static int move_fd(int newfd, int fd) {
 static int modify_count(struct opts_t *options) {
 	int stdout_fds[2];
 	int stderr_fds[2];
-	if (options->flags & PAM_ONCE_DEBUG)
-		pam_syslog(options->pamh, LOG_DEBUG, "Creating pipes");
 	if (pipe(stdout_fds) != 0) {
 		pam_syslog(options->pamh, LOG_ERR, "pipe(...) failed: %m");
 		return -1;
@@ -154,9 +152,6 @@ static int modify_count(struct opts_t *options) {
 						           "Got %d bytes from stdout pipe: %s",
 						           bytes, buffer);
 					if (bytes == 0) {
-						if (options->flags & PAM_ONCE_DEBUG)
-							pam_syslog(options->pamh, LOG_DEBUG,
-							           "EOF on stdout pipe");
 						break;
 					} else if (bytes < 0) {
 						pam_syslog(options->pamh, LOG_ERR, "read(stdout) failed: %m");
@@ -174,9 +169,6 @@ static int modify_count(struct opts_t *options) {
 						           "Got %d bytes from stderr pipe: %s",
 						           bytes, buffer);
 					if (bytes == 0) {
-						if (options->flags & PAM_ONCE_DEBUG)
-							pam_syslog(options->pamh, LOG_DEBUG,
-							           "EOF on stderr pipe");
 						break;
 					} else if (bytes < 0) {
 						pam_syslog(options->pamh, LOG_ERR, "read(stderr) failed: %m");
@@ -188,6 +180,9 @@ static int modify_count(struct opts_t *options) {
 		}
 		close(stdout_fds[0]);
 		close(stderr_fds[0]);
+
+		if (options->flags & PAM_ONCE_DEBUG)
+			pam_syslog(options->pamh, LOG_DEBUG, "Pipes closed, waiting for process");
 
 		pid_t retval;
 		int status;
@@ -255,9 +250,6 @@ static void cleanup_type(pam_handle_t *pamh, void *data, int error_status) {
 }
 
 static int get_count_cached(struct opts_t *options) {
-	if (options->flags & PAM_ONCE_DEBUG)
-		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_type)");
-
 	const enum pam_type_t *type;
 	if (pam_get_data(options->pamh, PACKAGE "_type", (const void **) &type)
 	    == PAM_SUCCESS) {
@@ -269,9 +261,6 @@ static int get_count_cached(struct opts_t *options) {
 	} else {
 		return -1;
 	}
-
-	if (options->flags & PAM_ONCE_DEBUG)
-		pam_syslog(options->pamh, LOG_DEBUG, "pam_get_data(" PACKAGE "_count)");
 
 	const int *count;
 	if (pam_get_data(options->pamh, PACKAGE "_count", (const void **) &count)
@@ -329,6 +318,9 @@ int pam_once_open_session(pam_handle_t *pamh, int flags) {
 	options.type = OPEN_SESSION;
 	options.modify = 1;
 
+	if (options.flags & PAM_ONCE_DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "*** pam_once_open_session init ***");
+
 	int ret;
 	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
@@ -351,6 +343,9 @@ int pam_once_open_session(pam_handle_t *pamh, int flags) {
 
 	if (options.flags & PAM_ONCE_DEBUG)
 		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
+
+	if (options.flags & PAM_ONCE_DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "*** pam_once_open_session end ***");
 
 	if (count == 1)
 		return PAM_SUCCESS;
@@ -365,6 +360,9 @@ int pam_once_close_session(pam_handle_t *pamh, int flags) {
 	options.type = CLOSE_SESSION;
 	options.modify = -1;
 
+	if (options.flags & PAM_ONCE_DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "*** pam_once_close_session init ***");
+
 	int ret;
 	if ((ret = pam_get_user(options.pamh, &options.user, NULL)) != PAM_SUCCESS) {
 		pam_syslog(pamh, LOG_ERR, "pam_get_user failed: %s",
@@ -387,6 +385,9 @@ int pam_once_close_session(pam_handle_t *pamh, int flags) {
 
 	if (options.flags & PAM_ONCE_DEBUG)
 		pam_syslog(options.pamh, LOG_DEBUG, "count = %d", count);
+
+	if (options.flags & PAM_ONCE_DEBUG)
+		pam_syslog(options.pamh, LOG_DEBUG, "*** pam_once_close_session end ***");
 
 	if (count == 0)
 		return PAM_SUCCESS;
