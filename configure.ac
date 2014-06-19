@@ -3,7 +3,7 @@ AC_PREREQ([2.61])
 
 AC_CONFIG_SRCDIR([src/pam-once.c])
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_FILES([Makefile pam-once.pc])
+AC_CONFIG_FILES([Makefile])
 
 AC_PROG_CC
 AC_PROG_INSTALL
