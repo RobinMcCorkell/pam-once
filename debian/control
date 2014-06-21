@@ -1,0 +1,27 @@
+Source: pam-once
+Priority: optional
+Maintainer: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Build-Depends: dh-exec (>= 0.3), debhelper (>= 8.0.0), libpam0g-dev
+Standards-Version: 3.9.4
+Section: libs
+Homepage: https://github.com/Xenopathic/pam-once
+
+Package: pam-once0
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ libpam-runtime
+Description: Library for PAM modules to provide once-per-user capabilities
+ Use of this library in a PAM module allows the module in the session stack
+ to determine if the user is logging in with no existing sessions, or logging
+ out with no other sessions.
+
+Package: pam-once-dev
+Section: libdevel
+Architecture: any
+Depends: pam-once0 (= ${binary:Version})
+Description: Development headers for pam-once
+ This package contains header files needed for development of PAM modules
+ utilising pam-once.
+ pam-once provides once-per-user capabilities to PAM modules.
+
