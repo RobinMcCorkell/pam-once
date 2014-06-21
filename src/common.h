@@ -18,7 +18,7 @@
 
 #include "config.h"
 
-#define COUNT_CMD PKGLIBEXECDIR "/po_count"
+#define COUNT_CMD LIBEXECDIR "/po_count"
 #define COUNT_PATH RUNDIR "/" PACKAGE
 
 /* po_count return codes */
