@@ -1,3 +1,7 @@
+changes from 0.3 to 0.4
+-----------------------
+ * Replace pkglibexecdir with libexecdir
+
 changes from 0.2 to 0.3
 -----------------------
 * fixed possible multi-line stderr -> syslog errors
