@@ -1,3 +1,9 @@
+pam-once (0.4-2~unstable) unstable; urgency=low
+
+  * Fixed error in debian link to libpam-once.so
+  
+ -- Robin McCorkell <rmccorkell@karoshi.org.uk> Thu, 03 Jul 2014 21:17:00 +0100
+
 pam-once (0.4-1~unstable) unstable; urgency=low
 
   * Upstream release 0.4
