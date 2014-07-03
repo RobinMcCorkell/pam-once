@@ -1,0 +1,20 @@
+changes from 0.3 to 0.4
+-----------------------
+ * Replace pkglibexecdir with libexecdir
+
+changes from 0.2 to 0.3
+-----------------------
+* fixed possible multi-line stderr -> syslog errors
+
+changes from 0.1 to 0.2
+-----------------------
+!!! move from PAM module to library for PAM modules !!!
+
+* po_count stderr output redirected to syslog
+* PAM_ONCE_DEBUG flag to enable syslog debug output
+* fixed issue with caching of count during close_session from open_session
+
+initial release 0.1
+-------------------
+
+

@@ -1,0 +1,48 @@
+pam-once
+Version 0.4
+
+ Copyright (C) 2013 Robin McCorkell
+ This file is part of pam-once.
+
+ pam-once is free software: you can redistribute it and/or modify
+ it under the terms of the GNU Lesser General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ pam-once is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU Lesser General Public License for more details.
+
+ You should have received a copy of the GNU Lesser General Public License
+ along with pam-once.  If not, see <http://www.gnu.org/licenses/>.
+
+A library for PAM modules to aid in limiting execution to the first
+open_session and the last close_session of a user, aka on their first login
+and last logout.
+
+Example:
+	#include <pam-once.h>
+
+	pam_sm_open_session(pam_handle_t *pamh, ...) {
+		int ret;
+		ret = pam_once_open_session(pamh, NULL);
+		if (ret == PAM_SUCCESS) {
+			/* run module */
+			return PAM_SUCCESS;
+		} else if (ret == PAM_IGNORE) {
+			/* don't run module */
+			return PAM_IGNORE;
+		}
+		/* error */
+		return ret;
+	}
+
+Contact:
+ Robin McCorkell <rmccorkell@karoshi.org.uk>
+
+See INSTALL for instructions on how to install this program. For preparing a
+release, run ./autogen.sh to generate the required files.
+
+All source files are contained in the src directory. Additional macros used in
+configure.ac are stored in the m4 directory.

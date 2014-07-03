@@ -1,0 +1,119 @@
+commit 9e55c87
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Tue Jul 1 13:44:42 2014 +0100
+
+    Release 0.4
+
+commit 01b6f6d
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Tue Jul 1 10:29:07 2014 +0100
+
+    Fix broken autogen.sh
+
+commit 6038549
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Mon Jun 23 14:27:27 2014 +0100
+
+    Add headers to _SOURCES to fix make dist
+
+commit f30d62c
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Sun Jun 22 00:42:35 2014 +0100
+
+    Debian-ize project
+
+commit 2ec050e
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Sat Jun 21 18:20:45 2014 +0100
+
+    Replace pkglibexecdir with libexecdir
+
+commit 5d868e4
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 22:26:01 2014 +0100
+
+    Version bump 0.3
+
+commit e249ef1
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 22:19:02 2014 +0100
+
+    Multi-line syslog output support
+
+commit e0cf184
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 20:49:13 2014 +0100
+
+    Fix syslog buffer pollution
+
+commit 2b85ede
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 18:36:53 2014 +0100
+
+    Version bump 0.2
+
+commit 28226d0
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 18:21:41 2014 +0100
+
+    Better debug output
+
+commit 094922d
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 16:10:43 2014 +0100
+
+    Revert "pkgconfig support"
+    
+    This reverts commit 78d901936293579bf73be2455035f46eb5d4dacf.
+
+commit 78d9019
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 15:51:45 2014 +0100
+
+    pkgconfig support
+
+commit a37b332
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Thu Jun 19 15:22:58 2014 +0100
+
+    Move from PAM module to shared library
+    
+    PAM was caching open_session module results, causing this module to not work
+    as expected. Instead, PAM modules wishing to leverage the once-per-user
+    capability can link to this library
+
+commit 2031577
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Wed Jun 18 23:08:12 2014 +0100
+
+    Fix cached counter for close session
+
+commit b04413f
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Wed Jun 18 22:49:30 2014 +0100
+
+    Add debug messages for pam_once.so
+
+commit b52e633
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Wed Jun 18 22:11:44 2014 +0100
+
+    Fix getpwnam error messages
+
+commit 34d3163
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Wed Jun 18 20:52:36 2014 +0100
+
+    Parse module argv, add 'debug' option
+
+commit b251748
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Wed Jun 18 20:20:08 2014 +0100
+
+    Redirect stderr output of po_count to syslog
+
+commit 56522a5
+Author: Robin McCorkell <rmccorkell@karoshi.org.uk>
+Date:   Tue Jun 17 22:48:00 2014 +0100
+
+    Initial commit
