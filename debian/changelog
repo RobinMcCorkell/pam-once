@@ -1,6 +1,6 @@
-pam-once (0.4-1~unstable) unstable; urgency=low
+pam-once (0.4-1~trusty) trusty; urgency=low
 
   * Upstream release 0.4
 
- -- Robin McCorkell <rmccorkell@karoshi.org.uk> Thu, 03 Jul 2014 15:13:19 +0100
+ -- Robin McCorkell <rmccorkell@karoshi.org.uk> Thu, 03 Jul 2014 15:13:36 +0100
 
