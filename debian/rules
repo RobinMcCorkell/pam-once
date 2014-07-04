@@ -4,5 +4,11 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+DEB_HOST_MULTIARCH := $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
 %:
 	dh $@ 
+
+override_dh_auto_configure:
+	dh_auto_configure -- --libdir=/lib/$(DEB_HOST_MULTIARCH) \
+		--libexecdir=/lib/$(DEB_HOST_MULTIARCH)/pam-once
