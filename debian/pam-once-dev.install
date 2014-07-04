@@ -1,4 +1,4 @@
 #!/usr/bin/dh-exec
 
 usr/include/pam-once.h
-usr/lib/${DEB_HOST_MULTIARCH}/libpam-once.a
+lib/${DEB_HOST_MULTIARCH}/libpam-once.a usr/lib/${DEB_HOST_MULTIARCH}/

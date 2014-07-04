@@ -1,12 +1,18 @@
+pam-once (0.4-3~trusty) trusty; urgency=low
+
+  * Debian packaging error fixed
+  
+ -- Robin McCorkell <rmccorkell@karoshi.org.uk>  Fri, 04 Jul 2014 23:55:00 +0100
+
 pam-once (0.4-2~trusty) trusty; urgency=low
 
   * Fixed error in debian link to libpam-once.so
   
- -- Robin McCorkell <rmccorkell@karoshi.org.uk> Thu, 03 Jul 2014 21:17:00 +0100
+ -- Robin McCorkell <rmccorkell@karoshi.org.uk>  Thu, 03 Jul 2014 21:17:00 +0100
 
 pam-once (0.4-1~trusty) trusty; urgency=low
 
   * Upstream release 0.4
 
- -- Robin McCorkell <rmccorkell@karoshi.org.uk> Thu, 03 Jul 2014 15:13:36 +0100
+ -- Robin McCorkell <rmccorkell@karoshi.org.uk>  Thu, 03 Jul 2014 15:13:36 +0100
 
